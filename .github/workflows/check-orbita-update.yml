@@ -72,16 +72,52 @@ jobs:
           echo "Download complete:"
           ls -lh orbita-browser-*
 
+      - name: Extract Chrome version and generate user-agents
+        if: steps.check_new.outputs.found == 'true'
+        id: chrome_version
+        run: |
+          V=${{ steps.check_new.outputs.new_version }}
+          mkdir -p /tmp/orbita-extract
+          tar xzf orbita-browser-linux-${V}.tar.gz -C /tmp/orbita-extract
+          CHROME_BIN=$(find /tmp/orbita-extract -name "chrome" -type f | head -1)
+          FULL_VERSION=$(strings "$CHROME_BIN" | grep -oE "${V}\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "^${V}\.0\.0\.0$" | sort -u | head -1)
+          if [ -z "$FULL_VERSION" ]; then
+            FULL_VERSION="${V}.0.0.0"
+          fi
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Chrome full version: $FULL_VERSION"
+          rm -rf /tmp/orbita-extract
+
+          cat > user-agents.json << EOF
+          {
+            "orbita_version": "v${V}",
+            "chrome_version": "${FULL_VERSION}",
+            "user_agents": {
+              "windows_10_x64": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
+              "windows_11_x64": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
+              "macos_intel": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
+              "macos_arm": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
+              "linux_x64": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+            }
+          }
+          EOF
+
+          echo "Generated user-agents.json:"
+          cat user-agents.json
+
       - name: Create GitHub Release
         if: steps.check_new.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V=${{ steps.check_new.outputs.new_version }}
+          CV=${{ steps.chrome_version.outputs.full_version }}
           gh release create "v${V}" \
             --repo ${{ github.repository }} \
             --title "Orbita Browser v${V}" \
             --notes "Orbita Browser v${V} (Chromium-based) by GoLogin
+
+          Chrome Version: ${CV}
 
           ## Download
           | Platform | File |
@@ -90,13 +126,22 @@ jobs:
           | Linux | orbita-browser-linux-${V}.tar.gz |
           | macOS Intel | orbita-browser-mac-intel-${V}.tar.gz |
           | macOS ARM (M1/M2/M3/M4) | orbita-browser-mac-arm-${V}.tar.gz |
+          | User-Agents | user-agents.json |
+
+          ## User-Agent
+          | Platform | User-Agent |
+          |----------|------------|
+          | Windows | Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
+          | macOS | Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
+          | Linux | Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
 
           Source: GoLogin Orbita Browser
           Auto-released by GitHub Actions" \
             orbita-browser-windows-${V}.zip \
             orbita-browser-linux-${V}.tar.gz \
             orbita-browser-mac-intel-${V}.tar.gz \
-            orbita-browser-mac-arm-${V}.tar.gz
+            orbita-browser-mac-arm-${V}.tar.gz \
+            user-agents.json
 
           echo "Release v${V} created successfully!"
 
