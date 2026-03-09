@@ -2,7 +2,7 @@ name: Check Orbita Browser Update
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '0 0 * * *'  # Daily at 00:00 UTC
   workflow_dispatch: # Manual trigger
 
 jobs:
