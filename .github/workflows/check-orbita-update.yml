@@ -85,10 +85,10 @@ jobs:
             UA_WIN=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=win" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
             UA_MAC=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=mac" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
             UA_LIN=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=lin" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
+            UA_ANDROID=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=android" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
 
             if [ -n "$UA_WIN" ] && [ -n "$UA_MAC" ] && [ -n "$UA_LIN" ]; then
               API_SUCCESS=true
-              # Extract Chrome version from API user-agent
               FULL_VERSION=$(echo "$UA_WIN" | grep -oE 'Chrome/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sed 's/Chrome\///')
               echo "API success - Chrome version: $FULL_VERSION"
             fi
@@ -108,6 +108,7 @@ jobs:
             UA_WIN="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
             UA_MAC="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
             UA_LIN="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+            UA_ANDROID="Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Mobile Safari/537.36"
             echo "Fallback - Chrome version: $FULL_VERSION"
           fi
 
@@ -115,15 +116,24 @@ jobs:
           echo "ua_win=$UA_WIN" >> $GITHUB_OUTPUT
           echo "ua_mac=$UA_MAC" >> $GITHUB_OUTPUT
           echo "ua_lin=$UA_LIN" >> $GITHUB_OUTPUT
+          echo "ua_android=$UA_ANDROID" >> $GITHUB_OUTPUT
 
           cat > user-agents.json << EOF
           {
             "orbita_version": "v${V}",
             "chrome_version": "${FULL_VERSION}",
             "user_agents": {
-              "windows": "${UA_WIN}",
-              "macos": "${UA_MAC}",
-              "linux": "${UA_LIN}"
+              "windows_10": "${UA_WIN}",
+              "windows_11": "${UA_WIN}",
+              "macos_intel": "${UA_MAC}",
+              "macos_arm": "${UA_MAC}",
+              "linux": "${UA_LIN}",
+              "android": "${UA_ANDROID}"
+            },
+            "notes": {
+              "windows": "Windows 10 and 11 share the same User-Agent (both use NT 10.0)",
+              "macos": "Intel and ARM Macs share the same User-Agent",
+              "android": "Device model may vary per API call"
             }
           }
           EOF
@@ -141,6 +151,7 @@ jobs:
           UA_WIN="${{ steps.api_useragents.outputs.ua_win }}"
           UA_MAC="${{ steps.api_useragents.outputs.ua_mac }}"
           UA_LIN="${{ steps.api_useragents.outputs.ua_lin }}"
+          UA_ANDROID="${{ steps.api_useragents.outputs.ua_android }}"
 
           gh release create "v${V}" \
             --repo ${{ github.repository }} \
@@ -161,9 +172,14 @@ jobs:
           ## User-Agent
           | Platform | User-Agent |
           |----------|------------|
-          | Windows | ${UA_WIN} |
-          | macOS | ${UA_MAC} |
+          | Windows 10/11 | ${UA_WIN} |
+          | macOS Intel | ${UA_MAC} |
+          | macOS ARM | ${UA_MAC} |
           | Linux | ${UA_LIN} |
+          | Android | ${UA_ANDROID} |
+
+          > Windows 10 and 11 share the same User-Agent (both use NT 10.0)
+          > Intel and ARM Macs share the same User-Agent
 
           Source: GoLogin Orbita Browser
           Auto-released by GitHub Actions" \
