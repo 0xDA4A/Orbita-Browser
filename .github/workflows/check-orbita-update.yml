@@ -1,0 +1,102 @@
+name: Check Orbita Browser Update
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get latest release version
+        id: get_latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh release list --repo ${{ github.repository }} --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing release found, starting from v143"
+            LATEST_VERSION=143
+          else
+            LATEST_VERSION=$(echo "$LATEST_TAG" | sed 's/v//')
+          fi
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Current latest version: v$LATEST_VERSION"
+
+      - name: Check for new versions
+        id: check_new
+        run: |
+          LATEST=${{ steps.get_latest.outputs.latest_version }}
+          NEW_VERSION=""
+          # Check up to 10 versions ahead
+          for i in $(seq 1 10); do
+            CHECK_V=$((LATEST + i))
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --head \
+              "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${CHECK_V}.zip")
+            echo "Checking v${CHECK_V}: HTTP ${HTTP_CODE}"
+            if [ "$HTTP_CODE" = "200" ]; then
+              NEW_VERSION=$CHECK_V
+            else
+              break
+            fi
+          done
+          if [ -n "$NEW_VERSION" ]; then
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "New version found: v$NEW_VERSION"
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+            echo "No new version found"
+          fi
+
+      - name: Download binaries
+        if: steps.check_new.outputs.found == 'true'
+        run: |
+          V=${{ steps.check_new.outputs.new_version }}
+          echo "Downloading Orbita Browser v${V}..."
+
+          curl -L -o orbita-browser-windows-${V}.zip \
+            "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip" &
+          curl -L -o orbita-browser-linux-${V}.tar.gz \
+            "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz" &
+          curl -L -o orbita-browser-mac-intel-${V}.tar.gz \
+            "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz" &
+          curl -L -o orbita-browser-mac-arm-${V}.tar.gz \
+            "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz" &
+          wait
+
+          echo "Download complete:"
+          ls -lh orbita-browser-*
+
+      - name: Create GitHub Release
+        if: steps.check_new.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=${{ steps.check_new.outputs.new_version }}
+          gh release create "v${V}" \
+            --repo ${{ github.repository }} \
+            --title "Orbita Browser v${V}" \
+            --notes "Orbita Browser v${V} (Chromium-based) by GoLogin
+
+          ## Download
+          | Platform | File |
+          |----------|------|
+          | Windows | orbita-browser-windows-${V}.zip |
+          | Linux | orbita-browser-linux-${V}.tar.gz |
+          | macOS Intel | orbita-browser-mac-intel-${V}.tar.gz |
+          | macOS ARM (M1/M2/M3/M4) | orbita-browser-mac-arm-${V}.tar.gz |
+
+          Source: GoLogin Orbita Browser
+          Auto-released by GitHub Actions" \
+            orbita-browser-windows-${V}.zip \
+            orbita-browser-linux-${V}.tar.gz \
+            orbita-browser-mac-intel-${V}.tar.gz \
+            orbita-browser-mac-arm-${V}.tar.gz
+
+          echo "Release v${V} created successfully!"
+
