@@ -72,32 +72,58 @@ jobs:
           echo "Download complete:"
           ls -lh orbita-browser-*
 
-      - name: Extract Chrome version and generate user-agents
+      - name: Get user-agents from GoLogin API (primary)
         if: steps.check_new.outputs.found == 'true'
-        id: chrome_version
+        id: api_useragents
         run: |
           V=${{ steps.check_new.outputs.new_version }}
-          mkdir -p /tmp/orbita-extract
-          tar xzf orbita-browser-linux-${V}.tar.gz -C /tmp/orbita-extract
-          CHROME_BIN=$(find /tmp/orbita-extract -name "chrome" -type f | head -1)
-          FULL_VERSION=$(strings "$CHROME_BIN" | grep -oE "${V}\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "^${V}\.0\.0\.0$" | sort -u | head -1)
-          if [ -z "$FULL_VERSION" ]; then
-            FULL_VERSION="${V}.0.0.0"
+          TOKEN="${{ secrets.GOLOGIN_API_TOKEN }}"
+          API_SUCCESS=false
+
+          if [ -n "$TOKEN" ]; then
+            echo "Fetching user-agents from GoLogin API..."
+            UA_WIN=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=win" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
+            UA_MAC=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=mac" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
+            UA_LIN=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/browser/fingerprint?os=lin" | python3 -c "import sys,json; print(json.load(sys.stdin)['navigator']['userAgent'])" 2>/dev/null || echo "")
+
+            if [ -n "$UA_WIN" ] && [ -n "$UA_MAC" ] && [ -n "$UA_LIN" ]; then
+              API_SUCCESS=true
+              # Extract Chrome version from API user-agent
+              FULL_VERSION=$(echo "$UA_WIN" | grep -oE 'Chrome/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sed 's/Chrome\///')
+              echo "API success - Chrome version: $FULL_VERSION"
+            fi
           fi
+
+          if [ "$API_SUCCESS" = false ]; then
+            echo "API unavailable, falling back to binary extraction..."
+            mkdir -p /tmp/orbita-extract
+            tar xzf orbita-browser-linux-${V}.tar.gz -C /tmp/orbita-extract
+            CHROME_BIN=$(find /tmp/orbita-extract -name "chrome" -type f | head -1)
+            FULL_VERSION=$(strings "$CHROME_BIN" | grep -oE "${V}\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "^${V}\.0\.0\.0$" | sort -u | head -1)
+            if [ -z "$FULL_VERSION" ]; then
+              FULL_VERSION="${V}.0.0.0"
+            fi
+            rm -rf /tmp/orbita-extract
+
+            UA_WIN="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+            UA_MAC="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+            UA_LIN="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+            echo "Fallback - Chrome version: $FULL_VERSION"
+          fi
+
           echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
-          echo "Chrome full version: $FULL_VERSION"
-          rm -rf /tmp/orbita-extract
+          echo "ua_win=$UA_WIN" >> $GITHUB_OUTPUT
+          echo "ua_mac=$UA_MAC" >> $GITHUB_OUTPUT
+          echo "ua_lin=$UA_LIN" >> $GITHUB_OUTPUT
 
           cat > user-agents.json << EOF
           {
             "orbita_version": "v${V}",
             "chrome_version": "${FULL_VERSION}",
             "user_agents": {
-              "windows_10_x64": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
-              "windows_11_x64": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
-              "macos_intel": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
-              "macos_arm": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36",
-              "linux_x64": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
+              "windows": "${UA_WIN}",
+              "macos": "${UA_MAC}",
+              "linux": "${UA_LIN}"
             }
           }
           EOF
@@ -111,7 +137,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V=${{ steps.check_new.outputs.new_version }}
-          CV=${{ steps.chrome_version.outputs.full_version }}
+          CV=${{ steps.api_useragents.outputs.full_version }}
+          UA_WIN="${{ steps.api_useragents.outputs.ua_win }}"
+          UA_MAC="${{ steps.api_useragents.outputs.ua_mac }}"
+          UA_LIN="${{ steps.api_useragents.outputs.ua_lin }}"
+
           gh release create "v${V}" \
             --repo ${{ github.repository }} \
             --title "Orbita Browser v${V}" \
@@ -131,9 +161,9 @@ jobs:
           ## User-Agent
           | Platform | User-Agent |
           |----------|------------|
-          | Windows | Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
-          | macOS | Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
-          | Linux | Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CV} Safari/537.36 |
+          | Windows | ${UA_WIN} |
+          | macOS | ${UA_MAC} |
+          | Linux | ${UA_LIN} |
 
           Source: GoLogin Orbita Browser
           Auto-released by GitHub Actions" \
