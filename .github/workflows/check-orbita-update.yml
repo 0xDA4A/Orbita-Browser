@@ -53,25 +53,6 @@ jobs:
             echo "No new version found"
           fi
 
-      - name: Download binaries
-        if: steps.check_new.outputs.found == 'true'
-        run: |
-          V=${{ steps.check_new.outputs.new_version }}
-          echo "Downloading Orbita Browser v${V}..."
-
-          curl -L -o orbita-browser-windows-${V}.zip \
-            "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip" &
-          curl -L -o orbita-browser-linux-${V}.tar.gz \
-            "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz" &
-          curl -L -o orbita-browser-mac-intel-${V}.tar.gz \
-            "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz" &
-          curl -L -o orbita-browser-mac-arm-${V}.tar.gz \
-            "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz" &
-          wait
-
-          echo "Download complete:"
-          ls -lh orbita-browser-*
-
       - name: Get user-agents from GoLogin API (primary)
         if: steps.check_new.outputs.found == 'true'
         id: api_useragents
@@ -96,14 +77,16 @@ jobs:
 
           if [ "$API_SUCCESS" = false ]; then
             echo "API unavailable, falling back to binary extraction..."
+            curl -L -o /tmp/orbita-linux.tar.gz \
+              "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz"
             mkdir -p /tmp/orbita-extract
-            tar xzf orbita-browser-linux-${V}.tar.gz -C /tmp/orbita-extract
+            tar xzf /tmp/orbita-linux.tar.gz -C /tmp/orbita-extract
             CHROME_BIN=$(find /tmp/orbita-extract -name "chrome" -type f | head -1)
             FULL_VERSION=$(strings "$CHROME_BIN" | grep -oE "${V}\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "^${V}\.0\.0\.0$" | sort -u | head -1)
             if [ -z "$FULL_VERSION" ]; then
               FULL_VERSION="${V}.0.0.0"
             fi
-            rm -rf /tmp/orbita-extract
+            rm -rf /tmp/orbita-extract /tmp/orbita-linux.tar.gz
 
             UA_WIN="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
             UA_MAC="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${FULL_VERSION} Safari/537.36"
@@ -122,6 +105,12 @@ jobs:
           {
             "orbita_version": "v${V}",
             "chrome_version": "${FULL_VERSION}",
+            "download_links": {
+              "windows": "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip",
+              "linux": "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz",
+              "macos_intel": "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz",
+              "macos_arm": "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz"
+            },
             "user_agents": {
               "windows_10": "${UA_WIN}",
               "windows_11": "${UA_WIN}",
@@ -161,13 +150,12 @@ jobs:
           Chrome Version: ${CV}
 
           ## Download
-          | Platform | File |
+          | Platform | Link |
           |----------|------|
-          | Windows | orbita-browser-windows-${V}.zip |
-          | Linux | orbita-browser-linux-${V}.tar.gz |
-          | macOS Intel | orbita-browser-mac-intel-${V}.tar.gz |
-          | macOS ARM (M1/M2/M3/M4) | orbita-browser-mac-arm-${V}.tar.gz |
-          | User-Agents | user-agents.json |
+          | Windows | [orbita-browser-latest-${V}.zip](https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip) |
+          | Linux | [orbita-browser-latest-${V}.tar.gz](https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz) |
+          | macOS Intel | [orbita-browser-latest-${V}.tar.gz](https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz) |
+          | macOS ARM (M1/M2/M3/M4) | [orbita-browser-latest-${V}.tar.gz](https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz) |
 
           ## User-Agent
           | Platform | User-Agent |
@@ -183,10 +171,6 @@ jobs:
 
           Source: GoLogin Orbita Browser
           Auto-released by GitHub Actions" \
-            orbita-browser-windows-${V}.zip \
-            orbita-browser-linux-${V}.tar.gz \
-            orbita-browser-mac-intel-${V}.tar.gz \
-            orbita-browser-mac-arm-${V}.tar.gz \
             user-agents.json
 
           echo "Release v${V} created successfully!"
