@@ -1,0 +1,8 @@
+WINDOWS/
+LINUX/
+MACOS-INTEL/
+MACOS-ARM/
+MACOS/
+*.zip
+*.tar.gz
+*.dmg
