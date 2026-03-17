@@ -17,7 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST_TAG=$(gh release list --repo ${{ github.repository }} --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          LATEST_TAG=$(gh release list --repo ${{ github.repository }} --limit 100 --json tagName -q '[.[] | select(.tagName | test("^v[0-9]+$"))][0].tagName' 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
             echo "No existing release found, starting from v143"
             LATEST_VERSION=143
@@ -109,7 +109,8 @@ jobs:
               "windows": "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip",
               "linux": "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz",
               "macos_intel": "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz",
-              "macos_arm": "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz"
+              "macos_arm": "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz",
+              "fonts": "https://github.com/${{ github.repository }}/releases/download/fonts-v1/fonts.zip"
             },
             "user_agents": {
               "windows_10": "${UA_WIN}",
@@ -122,7 +123,8 @@ jobs:
             "notes": {
               "windows": "Windows 10 and 11 share the same User-Agent (both use NT 10.0)",
               "macos": "Intel and ARM Macs share the same User-Agent",
-              "android": "Device model may vary per API call"
+              "android": "Device model may vary per API call",
+              "fonts": "Font collection for fingerprint spoofing (242 files, rarely changes)"
             }
           }
           EOF
