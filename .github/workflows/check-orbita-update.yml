@@ -15,45 +15,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get latest release version
-        id: get_latest
+      - name: Check for new stable version
+        id: check_new
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Get current release version from GitHub
           LATEST_TAG=$(gh release list --repo ${{ github.repository }} --limit 100 --json tagName -q '[.[] | select(.tagName | test("^v[0-9]+$"))][0].tagName' 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
-            echo "No existing release found, starting from v143"
-            LATEST_VERSION=143
+            echo "No existing release found"
+            CURRENT_VERSION=0
           else
-            LATEST_VERSION=$(echo "$LATEST_TAG" | sed 's/v//')
+            CURRENT_VERSION=$(echo "$LATEST_TAG" | sed 's/v//')
           fi
-          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "Current latest version: v$LATEST_VERSION"
+          echo "Current release version: v$CURRENT_VERSION"
 
-      - name: Check for new versions
-        id: check_new
-        run: |
-          LATEST=${{ steps.get_latest.outputs.latest_version }}
-          NEW_VERSION=""
-          # Check up to 10 versions ahead
-          for i in $(seq 1 10); do
-            CHECK_V=$((LATEST + i))
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --head \
-              "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${CHECK_V}.zip")
-            echo "Checking v${CHECK_V}: HTTP ${HTTP_CODE}"
-            if [ "$HTTP_CODE" = "200" ]; then
-              NEW_VERSION=$CHECK_V
-            else
-              break
+          # Primary: Get stable version from GoLogin API
+          TOKEN="${{ secrets.GOLOGIN_API_TOKEN }}"
+          STABLE_VERSION=""
+          if [ -n "$TOKEN" ]; then
+            API_RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.gologin.com/gologin-global-settings/latest-browser-info?os=win" 2>/dev/null || echo "")
+            if [ -n "$API_RESPONSE" ]; then
+              STABLE_VERSION=$(echo "$API_RESPONSE" | python3 -c "import sys,json; v=json.load(sys.stdin).get('latestVersion',''); print(v.split('.')[0] if v else '')" 2>/dev/null || echo "")
+              echo "API stable version: v$STABLE_VERSION"
             fi
-          done
-          if [ -n "$NEW_VERSION" ]; then
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+          # Fallback: Check download URLs if API failed
+          if [ -z "$STABLE_VERSION" ]; then
+            echo "API unavailable, falling back to download URL check..."
+            STABLE_VERSION=""
+            for i in $(seq 1 10); do
+              CHECK_V=$((CURRENT_VERSION + i))
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --head \
+                "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${CHECK_V}.zip")
+              echo "Checking v${CHECK_V}: HTTP ${HTTP_CODE}"
+              if [ "$HTTP_CODE" = "200" ]; then
+                STABLE_VERSION=$CHECK_V
+              else
+                break
+              fi
+            done
+          fi
+
+          # Compare and decide
+          if [ -n "$STABLE_VERSION" ] && [ "$STABLE_VERSION" -gt "$CURRENT_VERSION" ] 2>/dev/null; then
+            echo "new_version=$STABLE_VERSION" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
-            echo "New version found: v$NEW_VERSION"
+            echo "New stable version found: v$STABLE_VERSION"
           else
             echo "found=false" >> $GITHUB_OUTPUT
-            echo "No new version found"
+            echo "No new stable version (current: v$CURRENT_VERSION, API stable: v$STABLE_VERSION)"
           fi
 
       - name: Get user-agents from GoLogin API (primary)
