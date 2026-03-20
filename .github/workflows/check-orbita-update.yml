@@ -113,29 +113,38 @@ jobs:
           echo "ua_lin=$UA_LIN" >> $GITHUB_OUTPUT
           echo "ua_android=$UA_ANDROID" >> $GITHUB_OUTPUT
 
-          python3 -c "
-import json
-data = {
-    'orbita_version': 'v${V}',
-    'chrome_version': '${FULL_VERSION}',
-    'download_links': {
-        'windows': 'https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip',
-        'linux': 'https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz',
-        'macos_intel': 'https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz',
-        'macos_arm': 'https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz',
-        'fonts': 'https://github.com/${{ github.repository }}/releases/download/fonts-v1/fonts.zip'
-    },
-    'user_agents': {
-        'windows': '${UA_WIN}',
-        'macos': '${UA_MAC}',
-        'linux': '${UA_LIN}',
-        'android': '${UA_ANDROID}'
-    }
-}
-with open('user-agents.json', 'w') as f:
-    json.dump(data, f, indent=2)
-print(json.dumps(data, indent=2))
-"
+          export V FULL_VERSION UA_WIN UA_MAC UA_LIN UA_ANDROID
+          export REPO="${{ github.repository }}"
+          python3 << 'PYEOF'
+          import json, os
+          V = os.environ['V']
+          FULL_VERSION = os.environ['FULL_VERSION']
+          UA_WIN = os.environ['UA_WIN']
+          UA_MAC = os.environ['UA_MAC']
+          UA_LIN = os.environ['UA_LIN']
+          UA_ANDROID = os.environ['UA_ANDROID']
+          REPO = os.environ['REPO']
+          data = {
+              'orbita_version': f'v{V}',
+              'chrome_version': FULL_VERSION,
+              'download_links': {
+                  'windows': f'https://orbita-browser-windows.gologin.com/orbita-browser-latest-{V}.zip',
+                  'linux': f'https://orbita-browser-linux.gologin.com/orbita-browser-latest-{V}.tar.gz',
+                  'macos_intel': f'https://orbita-browser-mac.gologin.com/orbita-browser-latest-{V}.tar.gz',
+                  'macos_arm': f'https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-{V}.tar.gz',
+                  'fonts': f'https://github.com/{REPO}/releases/download/fonts-v1/fonts.zip'
+              },
+              'user_agents': {
+                  'windows': UA_WIN,
+                  'macos': UA_MAC,
+                  'linux': UA_LIN,
+                  'android': UA_ANDROID
+              }
+          }
+          with open('user-agents.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          print(json.dumps(data, indent=2))
+          PYEOF
 
           echo "Generated user-agents.json:"
           cat user-agents.json
