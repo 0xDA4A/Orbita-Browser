@@ -41,21 +41,18 @@ jobs:
             fi
           fi
 
-          # Fallback: Check download URLs if API failed
-          if [ -z "$STABLE_VERSION" ]; then
-            echo "API unavailable, falling back to download URL check..."
-            STABLE_VERSION=""
-            for i in $(seq 1 10); do
-              CHECK_V=$((CURRENT_VERSION + i))
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --head \
-                "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${CHECK_V}.zip")
-              echo "Checking v${CHECK_V}: HTTP ${HTTP_CODE}"
-              if [ "$HTTP_CODE" = "200" ]; then
-                STABLE_VERSION=$CHECK_V
-              else
-                break
-              fi
-            done
+          # Fallback: Check next version only (current+1) if API failed
+          # Only checks ONE version ahead to avoid detecting beta versions
+          if [ -z "$STABLE_VERSION" ] && [ "$CURRENT_VERSION" -gt 0 ] 2>/dev/null; then
+            echo "API unavailable, falling back to download URL check (current+1 only)..."
+            CHECK_V=$((CURRENT_VERSION + 1))
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --head \
+              "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${CHECK_V}.zip")
+            echo "Checking v${CHECK_V}: HTTP ${HTTP_CODE}"
+            if [ "$HTTP_CODE" = "200" ]; then
+              STABLE_VERSION=$CHECK_V
+              echo "Fallback: v${CHECK_V} available (may be beta, use with caution)"
+            fi
           fi
 
           # Compare and decide
@@ -116,33 +113,29 @@ jobs:
           echo "ua_lin=$UA_LIN" >> $GITHUB_OUTPUT
           echo "ua_android=$UA_ANDROID" >> $GITHUB_OUTPUT
 
-          cat > user-agents.json << EOF
-          {
-            "orbita_version": "v${V}",
-            "chrome_version": "${FULL_VERSION}",
-            "download_links": {
-              "windows": "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip",
-              "linux": "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz",
-              "macos_intel": "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz",
-              "macos_arm": "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz",
-              "fonts": "https://github.com/${{ github.repository }}/releases/download/fonts-v1/fonts.zip"
-            },
-            "user_agents": {
-              "windows_10": "${UA_WIN}",
-              "windows_11": "${UA_WIN}",
-              "macos_intel": "${UA_MAC}",
-              "macos_arm": "${UA_MAC}",
-              "linux": "${UA_LIN}",
-              "android": "${UA_ANDROID}"
-            },
-            "notes": {
-              "windows": "Windows 10 and 11 share the same User-Agent (both use NT 10.0)",
-              "macos": "Intel and ARM Macs share the same User-Agent",
-              "android": "Device model may vary per API call",
-              "fonts": "Font collection for fingerprint spoofing (242 files, rarely changes)"
-            }
-          }
-          EOF
+          python3 -c "
+import json
+data = {
+    'orbita_version': 'v${V}',
+    'chrome_version': '${FULL_VERSION}',
+    'download_links': {
+        'windows': 'https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip',
+        'linux': 'https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz',
+        'macos_intel': 'https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz',
+        'macos_arm': 'https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz',
+        'fonts': 'https://github.com/${{ github.repository }}/releases/download/fonts-v1/fonts.zip'
+    },
+    'user_agents': {
+        'windows': '${UA_WIN}',
+        'macos': '${UA_MAC}',
+        'linux': '${UA_LIN}',
+        'android': '${UA_ANDROID}'
+    }
+}
+with open('user-agents.json', 'w') as f:
+    json.dump(data, f, indent=2)
+print(json.dumps(data, indent=2))
+"
 
           echo "Generated user-agents.json:"
           cat user-agents.json
