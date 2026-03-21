@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 0 * * *'  # Daily at 00:00 UTC
   workflow_dispatch: # Manual trigger
+  repository_dispatch:
+    types: [mirror-orbita]
 
 permissions:
   contents: write
@@ -20,6 +22,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+
+          # If triggered by repository_dispatch, use provided version
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            DISPATCH_VERSION="${{ github.event.client_payload.major }}"
+            if [ -n "$DISPATCH_VERSION" ]; then
+              echo "Using dispatched version: v$DISPATCH_VERSION"
+              echo "new_version=$DISPATCH_VERSION" >> $GITHUB_OUTPUT
+              echo "found=true" >> $GITHUB_OUTPUT
+              # Skip the rest of version detection
+              exit 0
+            fi
+          fi
           # Get current release version from GitHub
           LATEST_TAG=$(gh release list --repo ${{ github.repository }} --limit 100 --json tagName -q '[.[] | select(.tagName | test("^v[0-9]+$"))][0].tagName' 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
