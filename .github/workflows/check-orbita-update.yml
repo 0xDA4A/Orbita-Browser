@@ -127,8 +127,43 @@ jobs:
           echo "ua_lin=$UA_LIN" >> $GITHUB_OUTPUT
           echo "ua_android=$UA_ANDROID" >> $GITHUB_OUTPUT
 
+      - name: Download binaries and compute checksums
+        if: steps.check_new.outputs.found == 'true'
+        id: checksums
+        run: |
+          V=${{ steps.check_new.outputs.new_version }}
+          mkdir -p /tmp/orbita-bins
+
+          echo "Downloading binaries for checksum computation..."
+          curl -L --fail --retry 3 -o /tmp/orbita-bins/linux.tar.gz "https://orbita-browser-linux.gologin.com/orbita-browser-latest-${V}.tar.gz"
+          curl -L --fail --retry 3 -o /tmp/orbita-bins/windows.zip "https://orbita-browser-windows.gologin.com/orbita-browser-latest-${V}.zip"
+          curl -L --fail --retry 3 -o /tmp/orbita-bins/mac.tar.gz "https://orbita-browser-mac.gologin.com/orbita-browser-latest-${V}.tar.gz"
+          curl -L --fail --retry 3 -o /tmp/orbita-bins/mac-arm.tar.gz "https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${V}.tar.gz"
+
+          echo "sha256_linux=$(sha256sum /tmp/orbita-bins/linux.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha256_windows=$(sha256sum /tmp/orbita-bins/windows.zip | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha256_mac=$(sha256sum /tmp/orbita-bins/mac.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha256_mac_arm=$(sha256sum /tmp/orbita-bins/mac-arm.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+          rm -rf /tmp/orbita-bins
+          echo "Checksums computed and temp files deleted."
+
+      - name: Generate user-agents.json
+        if: steps.check_new.outputs.found == 'true'
+        run: |
+          V=${{ steps.check_new.outputs.new_version }}
+          FULL_VERSION="${{ steps.api_useragents.outputs.full_version }}"
+          UA_WIN="${{ steps.api_useragents.outputs.ua_win }}"
+          UA_MAC="${{ steps.api_useragents.outputs.ua_mac }}"
+          UA_LIN="${{ steps.api_useragents.outputs.ua_lin }}"
+          UA_ANDROID="${{ steps.api_useragents.outputs.ua_android }}"
+
           export V FULL_VERSION UA_WIN UA_MAC UA_LIN UA_ANDROID
           export REPO="${{ github.repository }}"
+          export SHA256_WINDOWS="${{ steps.checksums.outputs.sha256_windows }}"
+          export SHA256_LINUX="${{ steps.checksums.outputs.sha256_linux }}"
+          export SHA256_MAC="${{ steps.checksums.outputs.sha256_mac }}"
+          export SHA256_MAC_ARM="${{ steps.checksums.outputs.sha256_mac_arm }}"
           python3 << 'PYEOF'
           import json, os
           V = os.environ['V']
@@ -142,11 +177,11 @@ jobs:
               'orbita_version': f'v{V}',
               'chrome_version': FULL_VERSION,
               'download_links': {
-                  'windows': f'https://orbita-browser-windows.gologin.com/orbita-browser-latest-{V}.zip',
-                  'linux': f'https://orbita-browser-linux.gologin.com/orbita-browser-latest-{V}.tar.gz',
-                  'macos_intel': f'https://orbita-browser-mac.gologin.com/orbita-browser-latest-{V}.tar.gz',
-                  'macos_arm': f'https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-{V}.tar.gz',
-                  'fonts': f'https://github.com/{REPO}/releases/download/fonts-v1/fonts.zip'
+                  'windows': {'url': f'https://orbita-browser-windows.gologin.com/orbita-browser-latest-{V}.zip', 'sha256': os.environ.get('SHA256_WINDOWS', '')},
+                  'linux': {'url': f'https://orbita-browser-linux.gologin.com/orbita-browser-latest-{V}.tar.gz', 'sha256': os.environ.get('SHA256_LINUX', '')},
+                  'macos_intel': {'url': f'https://orbita-browser-mac.gologin.com/orbita-browser-latest-{V}.tar.gz', 'sha256': os.environ.get('SHA256_MAC', '')},
+                  'macos_arm': {'url': f'https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-{V}.tar.gz', 'sha256': os.environ.get('SHA256_MAC_ARM', '')},
+                  'fonts': {'url': f'https://github.com/{REPO}/releases/download/fonts-v1/fonts.zip', 'sha256': ''}
               },
               'user_agents': {
                   'windows': UA_WIN,
