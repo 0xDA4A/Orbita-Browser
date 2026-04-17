@@ -1,1 +1,8 @@
-{}
+{
+  "v145": {
+    "linux": "18b5a1d8e47c3f9accd462be330a5817",
+    "windows": "b10575cf2a9e237ea34e36e1acdc7128",
+    "macos_intel": "5f4d3be40cabb97370b8711a15563fa0",
+    "macos_arm": "d3784a668dc75abeeb4145d0b5eec48c"
+  }
+}
