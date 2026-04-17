@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 0 * * *'  # Daily at 00:00 UTC
   workflow_dispatch: # Manual trigger
+    inputs:
+      force_rehash:
+        description: 'Force re-download and recompute SHA for latest release (bypass ETag cache)'
+        type: boolean
+        default: false
   repository_dispatch:
     types: [mirror-orbita]
 
@@ -78,6 +83,142 @@ jobs:
             echo "found=false" >> $GITHUB_OUTPUT
             echo "No new stable version (current: v$CURRENT_VERSION, API stable: v$STABLE_VERSION)"
           fi
+
+      - name: Recheck latest release SHA drift
+        id: sha_drift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_REHASH: ${{ github.event.inputs.force_rehash }}
+          REPO: ${{ github.repository }}
+        run: |
+          LATEST_TAG=$(gh release list --repo "$REPO" --limit 100 --json tagName -q '[.[] | select(.tagName | test("^v[0-9]+$"))][0].tagName' 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing release - skipping drift recheck"
+            exit 0
+          fi
+          LATEST="${LATEST_TAG#v}"
+          echo "Rechecking SHA drift for ${LATEST_TAG}"
+
+          mkdir -p state
+          [ -f state/latest-etags.json ] || echo '{}' > state/latest-etags.json
+
+          fetch_etag() {
+            local url="$1"
+            local etag
+            etag=$(curl -sIL --max-time 30 "$url" | awk 'tolower($1)=="etag:"{print $2}' | tr -d '\r"' | tail -1)
+            if [ -z "$etag" ]; then
+              echo "  HEAD returned no ETag, falling back to GET Range 0-1024" >&2
+              etag=$(curl -sIL --max-time 30 -H 'Range: bytes=0-1024' "$url" | awk 'tolower($1)=="etag:"{print $2}' | tr -d '\r"' | tail -1)
+            fi
+            printf '%s' "$etag"
+          }
+
+          URL_LIN="https://orbita-browser-linux.gologin.com/orbita-browser-latest-${LATEST}.tar.gz"
+          URL_WIN="https://orbita-browser-windows.gologin.com/orbita-browser-latest-${LATEST}.zip"
+          URL_MAC="https://orbita-browser-mac.gologin.com/orbita-browser-latest-${LATEST}.tar.gz"
+          URL_ARM="https://orbita-browser-mac-arm.gologin.com/orbita-browser-latest-${LATEST}.tar.gz"
+
+          ETAG_LIN=$(fetch_etag "$URL_LIN")
+          ETAG_WIN=$(fetch_etag "$URL_WIN")
+          ETAG_MAC=$(fetch_etag "$URL_MAC")
+          ETAG_ARM=$(fetch_etag "$URL_ARM")
+          echo "Current etags: linux=$ETAG_LIN windows=$ETAG_WIN mac=$ETAG_MAC mac_arm=$ETAG_ARM"
+
+          export LATEST_TAG ETAG_LIN ETAG_WIN ETAG_MAC ETAG_ARM
+          DRIFT=$(python3 <<'PYEOF'
+          import json, os
+          tag = os.environ['LATEST_TAG']
+          cur = {
+              'linux': os.environ['ETAG_LIN'],
+              'windows': os.environ['ETAG_WIN'],
+              'macos_intel': os.environ['ETAG_MAC'],
+              'macos_arm': os.environ['ETAG_ARM'],
+          }
+          d = json.load(open('state/latest-etags.json'))
+          stored = d.get(tag, {})
+          print('true' if any(stored.get(k, '') != v for k, v in cur.items()) else 'false')
+          PYEOF
+          )
+
+          if [ "$DRIFT" != "true" ] && [ "${FORCE_REHASH:-false}" != "true" ]; then
+            echo "no drift and force_rehash=false -> skipping rehash"
+            exit 0
+          fi
+          echo "Proceeding with rehash (drift=$DRIFT, force_rehash=${FORCE_REHASH:-false})"
+
+          mkdir -p /tmp/orbita-rehash
+          curl -L --fail --retry 3 -o /tmp/orbita-rehash/linux.tar.gz    "$URL_LIN"
+          curl -L --fail --retry 3 -o /tmp/orbita-rehash/windows.zip     "$URL_WIN"
+          curl -L --fail --retry 3 -o /tmp/orbita-rehash/mac.tar.gz      "$URL_MAC"
+          curl -L --fail --retry 3 -o /tmp/orbita-rehash/mac-arm.tar.gz  "$URL_ARM"
+
+          SHA_LIN=$(sha256sum /tmp/orbita-rehash/linux.tar.gz    | cut -d' ' -f1)
+          SHA_WIN=$(sha256sum /tmp/orbita-rehash/windows.zip     | cut -d' ' -f1)
+          SHA_MAC=$(sha256sum /tmp/orbita-rehash/mac.tar.gz      | cut -d' ' -f1)
+          SHA_ARM=$(sha256sum /tmp/orbita-rehash/mac-arm.tar.gz  | cut -d' ' -f1)
+          rm -rf /tmp/orbita-rehash
+          echo "Computed: lin=$SHA_LIN win=$SHA_WIN mac=$SHA_MAC arm=$SHA_ARM"
+
+          curl -L --fail -o /tmp/user-agents.json "https://github.com/${REPO}/releases/download/${LATEST_TAG}/user-agents.json"
+
+          export SHA_LIN SHA_WIN SHA_MAC SHA_ARM
+          CHANGED=$(python3 <<'PYEOF'
+          import json, os
+          p = '/tmp/user-agents.json'
+          d = json.load(open(p))
+          dl = d.setdefault('download_links', {})
+          mapping = {
+              'linux': os.environ['SHA_LIN'],
+              'windows': os.environ['SHA_WIN'],
+              'macos_intel': os.environ['SHA_MAC'],
+              'macos_arm': os.environ['SHA_ARM'],
+          }
+          changed = False
+          for key, sha in mapping.items():
+              entry = dl.setdefault(key, {})
+              if entry.get('sha256', '') != sha:
+                  entry['sha256'] = sha
+                  changed = True
+          with open(p, 'w') as f:
+              json.dump(d, f, indent=2)
+          print('true' if changed else 'false')
+          PYEOF
+          )
+
+          python3 <<'PYEOF'
+          import json, os
+          p = 'state/latest-etags.json'
+          d = json.load(open(p))
+          d[os.environ['LATEST_TAG']] = {
+              'linux': os.environ['ETAG_LIN'],
+              'windows': os.environ['ETAG_WIN'],
+              'macos_intel': os.environ['ETAG_MAC'],
+              'macos_arm': os.environ['ETAG_ARM'],
+          }
+          with open(p, 'w') as f:
+              json.dump(d, f, indent=2)
+          PYEOF
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          DATE=$(date -u +%Y-%m-%d)
+
+          if [ "$CHANGED" != "true" ]; then
+            echo "no drift - computed sha matches existing user-agents.json; skipping release clobber"
+            if git diff --quiet state/latest-etags.json; then
+              echo "no changes to state file - nothing to commit"
+              exit 0
+            fi
+            git add state/latest-etags.json
+            git commit -m "chore(${LATEST_TAG}): update etag cache - no sha drift (${DATE})"
+            git push
+            exit 0
+          fi
+
+          gh release upload "$LATEST_TAG" /tmp/user-agents.json --clobber --repo "$REPO"
+          git add state/latest-etags.json
+          git commit -m "chore(${LATEST_TAG}): refresh sha - CDN re-uploaded ${DATE}"
+          git push
 
       - name: Get user-agents from GoLogin API (primary)
         if: steps.check_new.outputs.found == 'true'
