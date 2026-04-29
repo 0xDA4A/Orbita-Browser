@@ -4,5 +4,11 @@
     "windows": "b10575cf2a9e237ea34e36e1acdc7128",
     "macos_intel": "5f4d3be40cabb97370b8711a15563fa0",
     "macos_arm": "d3784a668dc75abeeb4145d0b5eec48c"
+  },
+  "v146": {
+    "linux": "5ca2b018453e32e263b349dabd0ea914",
+    "windows": "739679b2c953724623b84f6ba0dee727-41",
+    "macos_intel": "03fa0cec45709ac96d42fb8d922e119f",
+    "macos_arm": "66f3c1ceda39ba07d77a6908febc663a"
   }
 }
