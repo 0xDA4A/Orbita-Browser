@@ -10,5 +10,11 @@
     "windows": "739679b2c953724623b84f6ba0dee727-41",
     "macos_intel": "03fa0cec45709ac96d42fb8d922e119f",
     "macos_arm": "66f3c1ceda39ba07d77a6908febc663a"
+  },
+  "v147": {
+    "linux": "c71bcab915093411eb6c10d96f2f67e3",
+    "windows": "3f2855e92bc729c2c9fb4a9ff1e0ab6c-41",
+    "macos_intel": "d55957fb0d800d658fc370b6bb3df13a-41",
+    "macos_arm": "62fbf566bf9d80fd923d8c9a594d8277"
   }
 }
