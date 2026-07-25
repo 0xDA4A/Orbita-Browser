@@ -25,8 +25,8 @@
   },
   "v149": {
     "linux": "d7bc61c65e1aadbeb6c0ed8af41f75ac",
-    "windows": "618360cc47b5ce259f9eae5eb16ba6a0-42",
-    "macos_intel": "8494a675e6377dbcfae07a44643fe440-42",
+    "windows": "56cfc51bc825f22c432184ed789e96b7",
+    "macos_intel": "51e2199887c8d43049fb560315ff9d69",
     "macos_arm": "2c3d9450b43a9f8e0783c931ee0020cd"
   }
 }
