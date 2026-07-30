@@ -24,9 +24,9 @@
     "macos_arm": "8c6c797eb06e443e802d424b4d4d0fc2"
   },
   "v149": {
-    "linux": "d7bc61c65e1aadbeb6c0ed8af41f75ac",
-    "windows": "56cfc51bc825f22c432184ed789e96b7",
-    "macos_intel": "51e2199887c8d43049fb560315ff9d69",
-    "macos_arm": "2c3d9450b43a9f8e0783c931ee0020cd"
+    "linux": "d21082206c095ad0f974440499c5321f",
+    "windows": "4171d1badcb2f0fcad6e871a797a3a1f-42",
+    "macos_intel": "03d6c98005f080e61b78f03ceafd7932-42",
+    "macos_arm": "6f937c43b1d205be925bc7ddfac1cbb4"
   }
 }
