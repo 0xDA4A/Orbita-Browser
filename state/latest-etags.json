@@ -54,9 +54,9 @@
     "macos_arm": "a4d5092f1edcc3ce316a103c4598104b"
   },
   "v154": {
-    "linux": "706073f3ff7fdce7f5c249b800ba9ad1-43",
-    "windows": "98af24e2ff76692a09071e33b6b74c4a-44",
-    "macos_intel": "7b95310aa7379cd02ee81a3ea4534300-44",
-    "macos_arm": "9f0830e7bd95c6680ac3457a66ab102d"
+    "linux": "ca8f6cfe6ce4381b13aabfc66ded08c2-43",
+    "windows": "6f360833245cbaa15082da23b8c9afae-44",
+    "macos_intel": "be1dfc1b70c3eb5800c0580d3efde5b4-44",
+    "macos_arm": "ad812351889c2a89c6772f111fb1006c"
   }
 }
