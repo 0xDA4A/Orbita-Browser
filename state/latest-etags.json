@@ -64,5 +64,11 @@
     "windows": "78d601745558cefd545c42612868842e-45",
     "macos_intel": "a46cef913d168fd90dd6f29ee5afb9ac-45",
     "macos_arm": "3145d85d4dcfa6dfd45af383b95c4cc5"
+  },
+  "v157": {
+    "linux": "ac2eb03019f5511d3e6739d126e409d9-79",
+    "windows": "63312e94caa0736311da99d745d299e8-80",
+    "macos_intel": "18c535fdf1107aae11d9af7949364cd0-80",
+    "macos_arm": "3a0b49f5cad05aeb750f8ddfe6da4af0-75"
   }
 }
